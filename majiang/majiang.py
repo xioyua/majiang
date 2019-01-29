@@ -215,13 +215,13 @@ class Majiang():
                 return reward
         raise Exception("不能胡牌")
 
-    def calculate_reward(self, brd, type):
+    def calculate_reward(self, hand, bar, bump , type):
         '''奖励计算'''
         if type == 1:  #自摸
-            reward = self.board_cal(brd)
+            reward = self.board_cal(hand, bar, bump)
             return reward
         elif type == 2:  #胡
-            reward = self.board_cal(brd)
+            reward = self.board_cal(hand, bar, bump)
             if reward == 2:
                 return 0
             else:
@@ -229,13 +229,25 @@ class Majiang():
         else:
             raise Exception('牌型计算类型参数不正确')
 
-    def board_cal(self, brd):
+    def board_cal(self, hand, bar, bump):
         '''牌型计算'''
         rate = 1
-        for each in self.status:
+        for each in self.status:    #杠、前四、后四、报叫倍率计算
             if each == 1:
                 rate = rate * 2
         
+    def is_Sanitary_color(self, hand, bar, bump):
+        all = hand + bar + bump
+        for each in range(len(all)-1):
+            if all[each] == all[each + 1]:
+                break
+        else:
+            return 1
+        return 0
+            
+
+
+
 
 mj = Majiang()
 
