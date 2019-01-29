@@ -242,6 +242,5 @@ mj = Majiang()
 mj.reset()
 mj.distribute_board()
 mj.show_battleField()
-mj.deal_one_board("east")
 mj.show_battleField()
 
