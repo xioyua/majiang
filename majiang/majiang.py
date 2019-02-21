@@ -28,19 +28,22 @@ class Majiang():
         self.north = 3
         print(self.hand_board)
         self.cursor_loc = self.east  # 当前焦点位置，即出牌者
+        self.new_board  = 0       #焦点牌，即刚出的牌
         self.status = np.array([0, 0, 0, 0])  # bar, top4, bottom4, showReady
-        self.act_list1 = np.array([0, 0, 0])  # output, self-get, dark-bar
-        self.act_list2 = np.array([0, 0, 0])  # other-get, point-bar, bump
+        self.act_list1 = np.array([0, 0, 0])  # output, self-win, dark-bar
+        self.act_list2 = np.array([0, 0, 0])  # other-win, point-bar, bump
         self.stage = 0
         self.player_done = np.array([0, 0, 0, 0])
 
     def reset(self,):
         self.cursor_loc = self.east
-        self.status = [0, 0, 0, 0]
-        self.act_list1 = [0, 0, 0, 0]
-        self.act_list2 = [0, 0, 0, 0]
+        self.new_board  = 0
+        self.status = np.array([0, 0, 0, 0])  # bar, top4, bottom4, showReady
+        self.act_list1 = np.array([0, 0, 0])  # output, self-win, dark-bar
+        self.act_list2 = np.array([0, 0, 0])  # other-win, point-bar, bump
         self.stage = 0
-        self.player_done = [0, 0, 0, 0]
+        self.player_done = np.array([0, 0, 0, 0])
+        self.player_reward = np.array([0, 0, 0, 0])
 
         self.current_board_heap = self.All_Board
         random.shuffle(self.current_board_heap)  # 牌堆为总牌洗牌
@@ -101,6 +104,7 @@ class Majiang():
         self.hand_board[self.west].sort()
         self.hand_board[self.north].sort()
 
+        self.cursor_loc = self.east
         self.deal_one_board(self.east)  # 开局直接给东方玩家发一张牌
         self.stage = 1  # 第一阶段开始
 
@@ -145,35 +149,86 @@ class Majiang():
         print('self.bar[self.north]', self.bar[self.north])
         print('self.out[self.north]', self.out[self.north])
 
-    def hit_out(self, hand_loc):
+    def excute_action(self, player, action, hand_loc):
+        '''执行玩家动作'''
+        reward = 0
+        if action == 'hit_out':         #出牌
+            reward = self.hit_out(player, hand_loc)
+        elif action == 'dark_bar':      #暗杠
+            reward = self.baring_in_dark(player, self.hand_board[player][hand_loc])
+        elif action == 'ba_bar':        #巴杠
+            reward = self.baring_ba(player, hand_loc)
+        elif action == 'point_bar':     #点杠
+            reward = self.baring_point(player, hand_loc)
+        elif action == 'bump':          #碰
+            reward = self.bumping(player, hand_loc)
+        elif action == 'self_win':      #自摸
+            reward = self.self_hand_win(player)
+        elif action == 'ohter_win':
+            reward = self.get_hand_win(player)
+        else:
+            raise Exception("动作参数错了")
+        return reward
+
+    def hit_out(self, player, hand_loc):
         '''出牌'''
-        if len(self.hand_board[self.cursor_loc]) > hand_loc:
-            self.new_board = self.hand_board[self.cursor_loc].pop(
+        if len(self.hand_board[player]) > hand_loc:
+            self.new_board = self.hand_board[player].pop(
                 index=hand_loc)
-            self.out[self.cursor_loc].append(self.new_board)
+            self.out[player].append(self.new_board)
+            return 0
         else:
             raise Exception('err1')
 
-    def baring_in_dark(self, hand_loc):
+    def if_can_baring_in_dark(self, player):
+        '''是否可以暗杠'''
+        loc = []
+        for each in set(self.hand_board[player]):
+            if(self.hand_board[player].count(each) == 4):
+                loc.append(each)
+        if len(loc) > 0:
+            return loc
+        else:
+            return
+
+    def baring_in_dark(self, player, board):
         '''暗杠'''
-        if len(self.hand_board[self.cursor_loc]) > hand_loc + 3:
-            if (self.hand_board[self.cursor_loc][hand_loc] == self.hand_board[self.cursor_loc][hand_loc + 1] and
-                self.hand_board[self.cursor_loc][hand_loc + 1] == self.hand_board[self.cursor_loc][hand_loc + 2] and
-                    self.hand_board[self.cursor_loc][hand_loc + 2] == self.hand_board[self.cursor_loc][hand_loc + 3]):
-                self.bar[hand_loc].extend(
-                    self.hand_board[self.cursor_loc][hand_loc:hand_loc+4])
-                del (self.hand_board[self.cursor_loc][hand_loc:hand_loc + 4])
+        loc = self.if_can_baring_in_dark(player)
+        if 0 != loc and board in loc:
+            self.hand_board[player].remove(board)
+            self.hand_board[player].remove(board)
+            self.hand_board[player].remove(board)
+            self.hand_board[player].remove(board)
+            self.bar[player].append(board)
+            return 2
         else:
-            raise Exception('err1')
+            raise Exception('不能暗杠')
 
-    def baring_ba(self, hand_loc):
+    def if_can_baring_ba(self, player):
+        '''是否可以巴杠'''
+        for each in set(self.hand_board[player]):
+            if each in self.bar[player]:
+                return 1
+        else:
+            return 0
+
+
+    def baring_ba(self, player, hand_loc):
         '''巴杠'''
-        if (self.hand_board[self.cursor_loc][hand_loc] in self.bump[self.cursor_loc]):
-            this_board = self.hand_board[self.cursor_loc].pop(hand_loc)  # 手牌取出
-            self.bar[self.cursor_loc].append(this_board)  # 杠牌堆新增一张
-            self.bump[self.cursor_loc].remove(this_board)  # 碰牌堆减少一张
+        if (self.hand_board[player][hand_loc] in self.bump[player]):
+            this_board = self.hand_board[player].pop(hand_loc)  # 手牌取出
+            self.bar[player].append(this_board)  # 杠牌堆新增一张
+            self.bump[player].remove(this_board)  # 碰牌堆减少一张
+            return 1
         else:
             raise Exception("不能巴杠")
+
+    def if_can_baring_point(self, player_loc, target):
+        '''是否可以点杠'''
+        if(self.stage == 2):        #点杠只能在第二阶段
+            if self.hand_board[player_loc].count(target) >= 3:
+                    return 1
+        return 0
 
     def baring_point(self, player_loc, hand_loc):
         '''点杠'''
@@ -184,8 +239,15 @@ class Majiang():
                 this_board = self.hand_board[player_loc][hand_loc]
                 self.bar[player_loc].append(this_board)
                 del (self.hand_board[player_loc][hand_loc:hand_loc + 3])
-                return True
+                return 3
         raise Exception("不能点杠")
+
+    def if_can_bumping(self, player_loc, target):
+        '''是否可以碰'''
+        if self.hand_board[player_loc].count(target) >= 2:
+                    return 1
+        return 0
+
 
     def bumping(self, player_loc, hand_loc):
         '''碰'''
@@ -198,11 +260,11 @@ class Majiang():
                 return True
         raise Exception("不能碰")
 
-    def self_hand_win(self):
+    def self_hand_win(self, player):
         '''自摸'''
         if self.stage == 1:  # 自摸只能在1阶段
             reward = self.calculate_reward(
-                self.hand_board[self.cursor_loc], self.bar[self.cursor_loc], self.bump[self.cursor_loc], 1)
+                self.hand_board[player], self.bar[player], self.bump[player], 1)
             if (reward != 0):
                 return reward
         raise Exception("不能自摸")
@@ -211,7 +273,7 @@ class Majiang():
         '''胡牌'''
         if self.stage == 2:  # 胡牌只能在二阶段
             reward = self.calculate_reward(
-                self.hand_board[player_loc] + self.out[self.cursor_loc][-1], self.bar[player_loc], self.bump[player_loc], 2)
+                self.hand_board[player_loc] + self.new_board, self.bar[player_loc], self.bump[player_loc], 2)
             if reward != 0:
                 return reward
         raise Exception("不能胡牌")
@@ -219,14 +281,27 @@ class Majiang():
     def calculate_reward(self, hand, bar, bump, type):
         '''奖励计算'''
         if type == 1:  # 自摸
-            reward = self.board_cal(hand, bar, bump)
+            rate = self.board_cal(hand, bar, bump)
+            if rate == 1:
+                reward = 2
+            elif rate >= 2:
+                reward = 12 * rate / 2
+                if reward > 48:
+                    reward = 48
+            else:
+                reward = 0
             return reward
         elif type == 2:  # 胡
-            reward = self.board_cal(hand, bar, bump)
-            if reward == 1:
+            rate = self.board_cal(hand, bar, bump)
+            if rate == 1:
                 return 0
+            elif rate >= 2:
+                reward = 12 * rate / 2
+                if reward > 48:
+                    reward = 48
             else:
-                return reward
+                reward = 0
+            return reward
         else:
             raise Exception('牌型计算类型参数不正确')
 
@@ -313,6 +388,9 @@ class Majiang():
         else:
             if couple_num == 1:
                 return 1
+            else :
+                return 0
+        return 0
 
     def is_gold_single(self, hand, bar, bump):
         '''金钩钓'''
@@ -329,13 +407,43 @@ class Majiang():
                 couples.append(each)
 
         for couple in couples:
-            except_couptle = hand
+            except_couptle = hand.copy()
             except_couptle.remove(couple)
             except_couptle.remove(couple)
             if self.is_all_sectence(except_couptle) == 1:
                 return 1
         else:
             return 0
+
+    def get_aciton(self, player):
+        '''更新当前玩家可以执行的动作列表'''
+        if self.stage == 1:
+            out = 1
+            self_win = 0
+            dark_bar = 0
+            ba_bar = 0
+            if self.if_can_baring_in_dark(player):
+                dark_bar = 1
+            if self.if_can_baring_ba(player) > 0:
+                ba_bar = 1
+            if self.board_cal(self.hand_board[player], self.bar[player], self.bump[player]) > 0:
+                self_win = 1
+            return ["1", out, self_win, dark_bar, ba_bar]
+        elif self.stage == 2:
+            other_win = 0 
+            bump = 0
+            point_bar = 0
+            if self.calculate_reward(self.hand_board[player] + self.new_board, self.bar[player], self.bump[player], 2) > 0:
+                other_win = 1
+            if self.if_can_bumping(player, self.new_board):
+                bump = 1
+            if self.if_can_baring_point(player, self.new_board) > 0:
+                point_bar = 1
+            return ['2', other_win, bump, point_bar]
+        else:
+            raise Exception("阶段错了")
+
+            
 
     def is_all_sectence(self, hand):
         '''列表中全是句子'''
@@ -385,13 +493,17 @@ class Majiang():
         else:
             raise Exception("手牌参数输入错误，不是列表")
 
+    def cal_exist_player(self, player):
+        '''计算除了自己之外还有几个玩家存活'''
+        num 
+
 
 mj = Majiang()
-
 mj.reset()
-l1 = [1, 1, 1, 2, 3, 7, 7,
-      7, 9, 9, 9, 8, 8, 8]
-print('七对', mj.is_seven_couple(l1, [], []))
-print('清一色', mj.is_Sanitary_color(l1, [], []))
-print('大对子', mj.is_big_couple(l1, [], []))
-print('普通胡', mj.is_normal_hu(l1, [], []))
+mj.distribute_board()
+
+if mj.stage == 1:
+    action = mj.get_aciton(mj.cursor_loc)
+    mj.excute_action(act, loc)
+
+
